@@ -454,36 +454,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
       console.log('Signing up user:', { email, fullName });
-      
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: fullName
+          }
+        }
       });
 
       console.log('Sign up result:', { data, error });
-      
+
       if (error) {
         console.error('Sign up error details:', error);
         throw error;
       }
 
       if (data.user) {
-        // Update profile with full name
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({
-            full_name: fullName,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', data.user.id);
+        console.log('User signed up, waiting for profile creation...');
 
-        if (profileError) {
-          console.error('Profile update error details:', profileError);
-          throw profileError;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        try {
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+
+          if (existingProfile) {
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .update({
+                full_name: fullName,
+                updated_at: new Date().toISOString()
+              })
+              .eq('user_id', data.user.id);
+
+            if (updateError) {
+              console.error('Profile update error:', updateError);
+            }
+          }
+        } catch (err) {
+          console.warn('Error updating profile after signup:', err);
         }
 
-        // Send welcome notification
-        await sendWelcomeNotification(data.user.id);
+        try {
+          await sendWelcomeNotification(data.user.id);
+        } catch (err) {
+          console.warn('Could not send welcome notification:', err);
+        }
       }
     } catch (error) {
       console.error('Error signing up:', error);
